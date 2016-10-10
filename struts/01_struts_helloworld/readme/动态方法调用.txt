@@ -1,0 +1,161 @@
+Struts2动态方法调用:
+众所周知，默认条件下，在浏览器输入indexAction!execute.action，便会执行indexAction类里的execute方法，这样虽然方便，但可能带来安全隐患，
+通过url可以执行Action中的任意方法。
+   想要禁止调用动态方法，则要在struts.xml中通过constant元素将属性strutsenableDynamicMethodInvocation设置为false，来禁止调用动态方法。
+            <constant name="struts.enable.DynamicMethodInvocation" value="false"/>
+
+动态方法调用
+在Struts2中动态方法调用有三种方式,动态方法调用就是为了解决一个Action对应多个请求的处理,以免Action太多
+
+第一种方式:指定method属性
+这种方式我们前面已经用到过,类似下面的配置就可以实现
+<action name="chainAction" class="chapter2.action.Chapter2Action"
+method="chainAction">
+<result name="chainAction" type="chain">redirect</result>
+</action>  
+<action name="plainText" class="chapter2.action.Chapter2Action"
+method="plainText">
+<result name="plainText" type="plainText">/WEB-INF/JspPage/chapter2/plaintext.jsp</result>
+</action>
+
+第二种方式:感叹号方式(需要开启),官网不推荐使用这种方式,建议大家不要使用.
+用这种方式需要先开启一个开关
+<constant name="struts.enable.DynamicMethodInvocation" value="true" /> 
+将此常量设置为true,这种方式才能使用,使用见示例
+Action
+package chapter3.action;
+
+public class Chapter3Action {
+public String result1(){
+   return "result1";
+}
+
+public String result2(){
+   return "result2";
+}
+}
+
+Jsp中访问方式
+<body>
+    <a href="basePath/chapter3/chapter3Action!result1">result1</a><br><ahref="basePath/chapter3/chapter3Action!result1">result1</a><br><ahref="{basePath}/chapter3/chapter3Action!result2">result2</a><br>
+</body> 
+如果配置了后缀,必须这样写:
+/chapter4/chapter4Action!create.action
+XML中配置方式
+<package name="chapter3" namespace="/chapter3" extends="struts-default">
+   <action name="chapter3Action" class="chapter3.action.Chapter3Action">
+    <result name="result1">/WEB-INF/JspPage/chapter3/result1.jsp</result>
+    <result name="result2">/WEB-INF/JspPage/chapter3/result2.jsp</result>
+    <result name="chapter3">/WEB-INF/JspPage/chapter3/chapter3.jsp</result>
+   </action>
+</package>
+
+第三种方式:通配符方式(官网推荐使用)
+首先得关闭开关
+<constant name="struts.enable.DynamicMethodInvocation" value="false" /> 
+这一种方式是由第一种转变过来的,我们可以看到,第一种方式有很多重复的代码,那么我们可以进行变形,看下面的代码
+<action name="chapter3_*" class="chapter3.action.Chapter3Action"
+method="{1}">
+<result name="test">/…/test.jsp</result>
+</action> 
+chapter3_*这里的*就是你呆会要匹配的字符串,即你在后面的请求中得这样写
+http://...../ chapter3_create 或 http://...../ chapter3_update
+注意,这时你action中必须有create和update方法与之匹配,甚至还可以这样匹配
+<action name="chapter3_*" class="chapter3.action.Chapter3Action"
+method="{1}">
+<result name="test">/…/{1}.jsp</result>
+</action> 
+但是这时一定要有对应的JSP页面存在,并且相应的路径不能错,这就对我们的命名进行了强制性的规定,一定要规范.
+
+课堂示例:
+Action
+public class Chapter4Action extends ActionSupport {
+public String list(){
+   return "list";
+}
+
+public String create(){
+   return "create";
+}
+
+public String index(){
+   return "index";
+}
+} 
+XML:
+<action name="chapter4_*" class="chapter4.action.Chapter4Action" method="{1}">
+    <result name="{1}">/WEB-INF/JspPage/chapter4/chapter4_{1}.jsp</result>
+</action>
+
+
+访问Servlet API
+有时我们需要用到Request, Response, Session,Page, ServletContext这些我们以前常用的对象,那么在Struts2中怎么样使用到这些对象呢,通常有三种方式.
+间接访问1
+//向Session中放
+   ActionContext.getContext().getSession().put("wdpc", "Session中的WDPC");
+  
+   //向request中放
+   ActionContext.getContext().put("wdpc","request中的WDPC");
+  
+   //向application中放
+   ActionContext.getContext().getApplication().put("wdpc", "Application中的WDPC");
+   
+取值方式:
+ActionContext.getContext().getSession().get("wdpc");
+间接访问2
+
+
+Struts2中提供了一个静态类,他里面的方法可以获取到我们的HttpServletResponse, HttpServletRequest, 然后呢就可以还原到我们以前的使用方式了.
+
+直接访问
+虽然Struts2提供了ActionContext来访问Servlet API,但是这种方式毕竟不能直接获取Servelt API实例,为了在Action中直接访问Servlet API,Struts2还提供了一系列接口
+ServletContextAware   实现此接口后,可以取得ServletContext
+ServletRequestAware   实现此接口后,可以取得HttpServletRequest
+ServletResponseAware 实现此接口后,可以取得HttpServletResponse
+SessionAware         实现此接口后,可以取得HttpSession,注意,这里有点特殊,取得的是一个Map<String,Object> session,拦截器负责将session中存储的键值进行解析,并一一对应.
+
+所以我们通常的做法是:
+public class BaseAction implements ServletResponseAware, ServletRequestAware,
+   SessionAware {
+
+protected HttpServletResponse response;
+protected HttpServletRequest request;
+protected Map<String, Object> session;
+
+public void setServletResponse(HttpServletResponse response) {
+   this.response = response;
+}
+
+public void setServletRequest(HttpServletRequest request) {
+   this.request = request;
+}
+
+public void setSession(Map<String, Object> session) {
+   this.session = session;
+}
+
+public HttpServletResponse getResponse() {
+   return response;
+}
+
+public void setResponse(HttpServletResponse response) {
+   this.response = response;
+}
+
+public HttpServletRequest getRequest() {
+   return request;
+}
+
+public void setRequest(HttpServletRequest request) {
+   this.request = request;
+}
+
+public Map<String, Object> getSession() {
+   return session;
+}
+}
+
+为了让BaseAction能有验证的功能,并且不能被实例化,开发中我们会这样做:
+public abstract class BaseAction extends ActionSupport implements
+ServletResponseAware, ServletRequestAware, SessionAware 
+然后让我们每个模块的Action来继承这个BaseAction类,然后我们就可以在Action中直接使用Servelt的API了.
